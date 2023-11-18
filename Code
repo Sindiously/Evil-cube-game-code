@@ -1,0 +1,348 @@
+-- Variables
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local EvilCube = game.Workspace.EvilCube -- Get our evil cube model, no need for waitforchild since it's a server script
+local EntranceSensor = game.Workspace.EntranceSensor
+local Map = game.Workspace.Map
+local Walls = game.Workspace.Walls
+local Platforms = game.Workspace.Platforms
+local LavaPlatforms = game.Workspace.LavaPlatforms
+local Portal = game.Workspace.Portal
+local Floor = Map.Floor
+
+-- Animations
+local AnimationController = EvilCube.Humanoid:FindFirstChildOfClass("Animator") --Get animator
+local IdleAnimation = AnimationController:LoadAnimation(EvilCube.Idle) --Load all the animations
+local AttackAnimation = AnimationController:LoadAnimation(EvilCube.Attack)
+local SummonAnimation = AnimationController:LoadAnimation(EvilCube.Summon)
+
+-- Values
+local Started = false -- We have a started variable so we don't get the summon animation playing multiple times
+
+EntranceSensor.Touched:Connect(function(otherPart) --Connect a touch function to it which returns a parameter of the touched part
+	if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") and otherPart.Parent ~= EvilCube and Started  == false then --We check if it's a valid character and isn't the evil cube aswell as checking if we already started
+		print("The battle has began!")
+		for _, object in pairs(EvilCube:GetChildren()) do -- A loop to make the Evil Cube visible
+			if object:IsA("BasePart") and object.Name ~= "HumanoidRootPart" then --We check if the object is a basepart and isnt the humanoid root part
+				object.Transparency = 0
+
+				if object.Name == "Head" then
+					object.face.Transparency = 0
+				end
+			end
+		end
+
+		Started = true
+
+		for _, wall in pairs(Walls:GetChildren()) do --Make the walls cancollide so the player cannot cheat and escape
+			if wall:IsA("BasePart") then -- Just incase
+				wall.CanCollide = true
+			end
+		end
+
+		SummonAnimation:Play()
+		EntranceSensor:Destroy() --Destroy it since we dont need it anymore
+
+		SummonAnimation:GetMarkerReachedSignal("Arrived"):Connect(function() --Play a rock thump sound when the evil cube hits the ground
+			game.Workspace.Summon:Play()
+		end)
+
+		game.Workspace.Music:Play()
+		TweenService:Create(game.Workspace.Music, TweenInfo.new(1), {Volume = 0.5}):Play() --smoothly start playing the music
+
+		task.wait(1) --Wait for the evil cube to almost be done with the summon animation
+
+		IdleAnimation:Play()
+	end
+end)
+
+game.Workspace.Lava.Touched:Connect(function(otherPart)
+	if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") then -- check if its a player
+		otherPart.Parent.Humanoid.Health = 0 --Kill the player
+	end
+end)
+
+game.Workspace.Portal.PortalPart.Touched:Connect(function(otherPart)
+	if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") then -- check if its a player
+		local EvilCube = game.Workspace:FindFirstChild("EvilCube") --checking if it exists
+		
+		if not EvilCube then -- it doesnt exist therefore meaning its dead
+			local Player = Players:GetPlayerFromCharacter(otherPart.Parent)
+			
+			Player:Kick("You defeated the evil Cube!") -- kicks them with a rewarding message
+		end
+	end
+end)
+
+local function AttackAnim() --putting it in a function since it's repeated multiple times
+	IdleAnimation:Stop()
+	AttackAnimation:Play()
+	task.wait(1)
+	IdleAnimation:Play()
+end
+
+local function FireBallChallenge()
+	AttackAnim()
+	local function CreateCircle() -- create a circle
+		for i = 1, 1 do
+			local x = Floor.Position.X + math.random(-Floor.Size.X/2, Floor.Size.X/2) --Creates random positions based on the floor's size
+			local y = Floor.Position.Y + 4
+			local z = Floor.Position.Z + math.random(-Floor.Size.Z/2, Floor.Size.Z/2)
+
+			local NewCircle = ReplicatedStorage.Circle:Clone()
+			NewCircle.Parent = game.workspace.ChallengeDebris -- Put it into a folder for organisation
+			NewCircle.Position = Vector3.new(x, y, z) -- puts the new circle in that position
+
+			local NewFireBall = ReplicatedStorage.Fireball:Clone()
+
+			TweenService:Create(NewCircle, TweenInfo.new(2), {Transparency = 0.1}):Play() --smoothly make it visible
+
+			NewFireBall.Parent = game.workspace
+			NewFireBall.CFrame = NewCircle.CFrame + Vector3.new(0,120,0) --Put it 120 studs above the circle, it will fall by itself since it's unanchored
+			NewFireBall.Sound:Play()
+
+			NewFireBall.Touched:Connect(function(otherPart)
+				if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") then -- check if its a player
+					otherPart.Parent.Humanoid.Health -= 1
+				end
+			end)
+
+			task.spawn(function() --This is so the code can continue without yielding
+				task.wait(1.5)
+
+				TweenService:Create(NewCircle, TweenInfo.new(1), {Transparency = 1}):Play() --just for visual effects
+				task.wait(1)
+				NewCircle:Destroy()
+			end)
+		end
+	end
+
+	for i = 1, 50 do -- Repeat it 50 times
+		CreateCircle() -- call the function
+
+		task.wait(0.3)
+	end
+end
+
+local function LavaChallenge()
+	game.Workspace.PlatformSound:Play()
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0.5}):Play() --smoothly updates the volume
+
+	for _, platform in pairs(LavaPlatforms:GetChildren()) do --iterating through all the platforms
+		if platform:IsA("BasePart") then --double checking
+			TweenService:Create(platform, TweenInfo.new(2), {Position = platform.Position + Vector3.new(0, 4, 0)}):Play() -- using an addition vector3 to bring the platforms 3 studs up
+		end
+	end
+
+	for _, platform in pairs(Platforms:GetChildren()) do --Making all the other platforms transparent so you cannot see them when the floor breaks down
+		if platform:IsA("BasePart") then
+			platform.Transparency = 1
+		end
+	end
+
+	task.wait(2)
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0.5}):Play()
+	game.Workspace.PlatformSound:Stop()
+
+	task.wait(5) -- give the player some time to get on the platform
+	game.Workspace.FloorPart.Anchored = false
+	game.Workspace.FloorPart.CanCollide = false
+
+	game.Workspace.LavaSound:Play()
+	TweenService:Create(game.Workspace.LavaSound, TweenInfo.new(0.5), {Volume = 0.5}):Play() --smoothly updates the volume
+	task.wait(5)
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0}):Play()
+	game.Workspace.PlatformSound:Stop()
+
+	local NewFloorPart = ReplicatedStorage.FloorPart:Clone()
+	NewFloorPart.Parent = game.Workspace
+
+	game.Workspace.LavaSound:Play()
+	TweenService:Create(game.Workspace.LavaSound, TweenInfo.new(0.5), {Volume = 0}):Play()
+
+	for _, platform in pairs(LavaPlatforms:GetChildren()) do --iterating through all the platforms
+		if platform:IsA("BasePart") then --double checking
+			TweenService:Create(platform, TweenInfo.new(2), {Position = platform.Position - Vector3.new(0, 4, 0)}):Play() -- do the same but bring them 4 studs down
+		end
+	end
+	
+	for _, platform in pairs(Platforms:GetChildren()) do --making them back to visible
+		if platform:IsA("BasePart") then
+			platform.Transparency = 0
+		end
+	end
+
+	task.wait(2)
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0}):Play()
+	game.Workspace.PlatformSound:Stop()
+end
+
+function SpikesChallenge()
+	AttackAnim()
+	local function CreateCircle() -- create a circle
+		for i = 1, 1 do
+			task.spawn(function() -- we have to act like this is a new script but in reality it isn't
+				for i = 1, 1 do
+					for _, player in Players:GetPlayers() do -- get all the players
+						if player.Character then -- do they have a character
+							local NewCircle = ReplicatedStorage.SpikeCircle:Clone()
+							NewCircle.Parent = game.workspace.ChallengeDebris -- Put it into a folder for organisation
+							NewCircle.Position = (player.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)) -- puts it under the player
+						
+							task.wait(0.5)
+							local NewSpike = ReplicatedStorage.Spike:Clone() --making the spike
+							
+							NewSpike.Parent = game.Workspace
+							NewSpike.Position = NewCircle.Position - Vector3.new(0,15,0)
+							NewSpike.Sound:Play()
+							
+							TweenService:Create(NewSpike, TweenInfo.new(1), {Position = NewSpike.Position + Vector3.new(0, 30, 0)}):Play()
+							
+							NewSpike.Touched:Connect(function(otherPart)
+								if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") then 
+									otherPart.Parent.Humanoid.Health -= 1
+								end
+							end)
+							
+							
+							task.spawn(function() -- again multithreading
+								task.wait(1.5)
+								TweenService:Create(NewCircle, TweenInfo.new(1), {Transparency = 1}):Play() --just for visual effects
+								TweenService:Create(NewSpike, TweenInfo.new(1), {Position = NewSpike.Position - Vector3.new(0, 30, 0)}):Play()
+								task.wait(1)
+								NewCircle:Destroy()
+								NewSpike:Destroy()
+							end)
+						end
+					end
+				end
+			end)
+			
+			local x = Floor.Position.X + math.random(-Floor.Size.X/2, Floor.Size.X/2) --Creates random positions based on the floor's size
+			local y = Floor.Position.Y + 4
+			local z = Floor.Position.Z + math.random(-Floor.Size.Z/2, Floor.Size.Z/2)
+
+			local NewCircle = ReplicatedStorage.SpikeCircle:Clone()
+			NewCircle.Parent = game.workspace.ChallengeDebris -- Put it into a folder for organisation
+			NewCircle.Position = Vector3.new(x, y, z) -- puts the new circle in that position
+
+			local NewSpike = ReplicatedStorage.Spike:Clone()
+
+			TweenService:Create(NewCircle, TweenInfo.new(2), {Transparency = 0.1}):Play() --smoothly make it visible
+
+			NewSpike.Parent = game.workspace
+			NewSpike.Position = NewCircle.Position - Vector3.new(0,15,0) --Put it 15 studs under the circle
+			NewSpike.Sound:Play()
+			
+			TweenService:Create(NewSpike, TweenInfo.new(1), {Position = NewSpike.Position + Vector3.new(0, 30, 0)}):Play()
+			
+			NewSpike.Touched:Connect(function(otherPart)
+				if otherPart:IsA("BasePart") and otherPart.Parent:FindFirstChild("Humanoid") then -- check if its a player
+					otherPart.Parent.Humanoid.Health -= 1
+				end
+			end)
+
+			task.spawn(function() --This is so the code can continue without yielding
+				task.wait(1.5)
+				TweenService:Create(NewCircle, TweenInfo.new(1), {Transparency = 1}):Play() --just for visual effects
+				TweenService:Create(NewSpike, TweenInfo.new(1), {Position = NewSpike.Position - Vector3.new(0, 30, 0)}):Play()
+				task.wait(1)
+				NewCircle:Destroy()
+				NewSpike:Destroy()
+			end)
+		end
+	end
+
+	for i = 2, 75 do -- Repeat it 50 times
+		CreateCircle() -- call the function
+
+		task.wait(0.3)
+	end
+end
+
+local function BringPlatformsUp(Time) --Created a function for this to make it more organised aswell as a Time parameter so it can easily be modified
+	game.Workspace.PlatformSound:Play()
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0.5}):Play() --smoothly updates the volume
+
+	TweenService:Create(Platforms.One, TweenInfo.new(Time), {Position = Vector3.new(229.653, 8.78, 6.984)}):Play() -- moves it to the desired position
+	task.wait(2) -- Wait 2 seconds
+	TweenService:Create(Platforms.Two, TweenInfo.new(Time), {Position = Vector3.new(217.333, 10.192, 12.615)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Three, TweenInfo.new(Time), {Position = Vector3.new(211.126, 11.573, 24.783)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Four, TweenInfo.new(Time), {Position = Vector3.new(219.587, 12.613, 34.126)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Five, TweenInfo.new(Time), {Position = Vector3.new(232.143, 13.497, 26.811)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Six, TweenInfo.new(Time), {Position = Vector3.new(240.402, 14.576, 13.197)}):Play()
+
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(Time), {Volume = 0}):Play() --smoothly updates the volume
+	task.wait(Time) --Small but essential detail, waits for the last platform before stopping just in case
+	game.Workspace.PlatformSound:Stop()
+end
+
+local function BringPlatformsDown(Time) --A second version of the other function but this time bringing them down
+	game.Workspace.PlatformSound:Play()
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(0.5), {Volume = 0.5}):Play()
+
+	TweenService:Create(Platforms.Six, TweenInfo.new(Time), {Position = Vector3.new(240.402, 0.13, 13.197)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Five, TweenInfo.new(Time), {Position = Vector3.new(232.143, 1.003, 26.811)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Four, TweenInfo.new(Time), {Position = Vector3.new(219.587, 2.437, 34.126)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Three, TweenInfo.new(Time), {Position = Vector3.new(211.126, 3.612, 24.783)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.Two, TweenInfo.new(Time), {Position = Vector3.new(217.333, 4.991, 12.615)}):Play()
+	task.wait(2)
+	TweenService:Create(Platforms.One, TweenInfo.new(Time), {Position = Vector3.new(229.653, 5.971, 6.984)}):Play()
+
+	TweenService:Create(game.Workspace.PlatformSound, TweenInfo.new(Time), {Volume = 0}):Play()
+	task.wait(Time)
+	game.Workspace.PlatformSound:Stop()
+end
+
+while task.wait(5) do -- Do a continous loop with 5 second intervals between every challenge
+	if EvilCube.Humanoid.Health > 0 then -- Only do the challenges if the evil cube is alive and the game has started
+		if Started == true then
+			SpikesChallenge()
+			task.wait(5)
+			FireBallChallenge()
+			task.wait(5)
+			LavaChallenge()
+			task.wait(5)
+			BringPlatformsUp(3) -- calls the functions so the player gets time to attack the evil cube
+			task.wait(15)
+			
+			for _, player in Players:GetPlayers() do
+				if player.Character then
+					player.Character.HumanoidRootPart.Position = game.Workspace.FloorPart.Position + Vector3.new(0, 5, 0) -- teleport them to the middle
+				end
+			end
+			BringPlatformsDown(2)
+		end
+	else
+		break -- else if the evil cube is not alive stop the loop
+	end
+end
+
+task.wait(1) -- this code will run when the loop breaks meaning the evil cube is dead
+game.Workspace.PortalOpen:Play()
+game.Workspace.EvilCube:Destroy()
+game.Workspace.Music:Play()
+
+Portal.PortalPart.Transparency = 0 --makes the portal turn on
+Portal.PortalPart.CanCollide = true
+Portal.PortalPart.CanTouch = true
+
+for _, wall in pairs(Walls:GetChildren()) do --make the walls cancollide false so the player can go through them now
+	if wall:IsA("BasePart") then -- Just incase
+		wall.CanCollide = false
+	end
+end
+
+TweenService:Create(game.Workspace.Music, TweenInfo.new(1), {Volume = 0}):Play()
+task.wait(1)
+game.Workspace.Music:Stop()
